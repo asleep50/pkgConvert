@@ -30,11 +30,6 @@ This tool works best with regular desktop applications.
 
 Check your installed version any time with `./pkgconvert.sh --version`.
 
-**Make the scripts executable first:**
-```bash
-chmod +x pkgconvert.sh pdkconvert-gui.sh
-```
-
 ## Graphical Interface (Optional)
 
 Prefer clicking instead of typing? Run:
