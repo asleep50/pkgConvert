@@ -134,6 +134,19 @@ if [ "$SKIP_RPM_FAIL" = 0 ]; then
 fi
 check "--version reports version"            bash -c "'$CONVERTER' --version | grep -q pkgconvert"
 
+# ---------- 7. regression: large packages (VSCodium bug, v1.0.1) ----------
+echo "[ large package regression ]"
+rm -rf pkgroot; mkdir -p pkgroot/DEBIAN "pkgroot/usr/share/bigapp/resources/app/node_modules/a-realistically-long-module-directory-name/lib/dist"
+printf 'Package: bigfiles\nVersion: 1.0\nArchitecture: amd64\nMaintainer: t\nDepends: libxkbcommon0, libcups2\nDescription: t\n' > pkgroot/DEBIAN/control
+( cd "pkgroot/usr/share/bigapp/resources/app/node_modules/a-realistically-long-module-directory-name/lib/dist" && seq 1 4500 | sed 's/^/long-node-module-style-filename-/' | xargs -n200 touch )
+cp /bin/ls pkgroot/usr/share/bigapp/mainbin
+dpkg-deb -Zgzip --build pkgroot bigfiles.deb >/dev/null 2>&1
+OUT="$("$CONVERTER" bigfiles.deb --to rpm --info 2>&1)"; RC=$?
+check ">4000-file package analysis completes"  test "$RC" -eq 0
+check "analysis reaches the summary line"      grep -q "=====" <<< "$OUT"
+check "new dep: libxkbcommon0 translates"      grep -q "libxkbcommon0  ->  libxkbcommon" <<< "$OUT"
+check "new dep: libcups2 translates"           grep -q "libcups2  ->  cups-libs" <<< "$OUT"
+
 # ---------- summary ----------
 echo
 echo "== results: $PASS passed, $FAIL failed =="
