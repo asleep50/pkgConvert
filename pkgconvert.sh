@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 QUIET=0
 
@@ -308,6 +308,11 @@ case "$TARGET_DISTRO" in debian|fedora|opensuse|arch|unknown) ;; *) err -c 2 "--
 
 # Dependency name translations: debian|fedora|opensuse|arch
 # "-" means no direct single-package equivalent is known.
+#
+# EXTENDING THIS TABLE: add one line per package, four names separated by
+# pipes, in the order debian|fedora|opensuse|arch. Find the right names
+# with: apt search X / dnf search X / zypper search X / pacman -Ss X.
+# Real-world failure logs are the best source of new entries.
 DEP_MAP="
 libc6|glibc|glibc|glibc
 libstdc++6|libstdc++|libstdc++6|gcc-libs
@@ -322,6 +327,10 @@ libxtst6|libXtst|libXtst6|libxtst
 libxrandr2|libXrandr|libXrandr2|libxrandr
 libxdamage1|libXdamage|libXdamage1|libxdamage
 libxcomposite1|libXcomposite|libXcomposite1|libxcomposite
+libxext6|libXext|libXext6|libxext
+libxfixes3|libXfixes|libXfixes3|libxfixes
+libxkbcommon0|libxkbcommon|libxkbcommon0|libxkbcommon
+libxkbfile1|libxkbfile|libxkbfile1|libxkbfile
 libnss3|nss|mozilla-nss|nss
 libnspr4|nspr|mozilla-nspr|nspr
 libasound2|alsa-lib|alsa|alsa-lib
@@ -331,6 +340,7 @@ libsecret-1-0|libsecret|libsecret-1-0|libsecret
 libuuid1|libuuid|libuuid1|util-linux-libs
 libssl3|openssl-libs|libopenssl3|openssl
 libcurl4|libcurl|libcurl4|curl
+libcurl3-gnutls|libcurl|libcurl4|curl
 libexpat1|expat|libexpat1|expat
 libfontconfig1|fontconfig|fontconfig|fontconfig
 libfreetype6|freetype|libfreetype6|freetype2
@@ -344,7 +354,12 @@ libvulkan1|vulkan-loader|libvulkan1|vulkan-icd-loader
 libayatana-appindicator3-1|libappindicator-gtk3|libappindicator3-1|libappindicator-gtk3
 libudev1|systemd-libs|libudev1|systemd-libs
 libatk1.0-0|atk|libatk-1_0-0|at-spi2-core
+libatk-bridge2.0-0|at-spi2-atk|libatk-bridge-2_0-0|at-spi2-core
+libatspi2.0-0|at-spi2-core|libatspi0|at-spi2-core
 libglib2.0-0|glib2|libglib-2_0-0|glib2
+libcups2|cups-libs|libcups2|libcups
+ca-certificates|ca-certificates|ca-certificates|ca-certificates
+xdg-utils|xdg-utils|xdg-utils|xdg-utils
 "
 
 col_for() {  # distro -> column number in DEP_MAP
@@ -418,14 +433,18 @@ if command -v readelf >/dev/null && command -v ldconfig >/dev/null; then
   SYSLIBS="$WORKDIR/syslibs"; ldconfig -p 2>/dev/null | awk '{print $1}' > "$SYSLIBS" || true
   NEEDED="$WORKDIR/needed"
   # Parallel scan: fan the ELF check + readelf across all CPU cores.
-  # Big Electron/Qt apps have hundreds of binaries; this is ~Nx faster.
+  # NOTE: caps use awk (reads to end-of-input), NOT head — head slams the
+  # pipe shut early, find dies of SIGPIPE, and pipefail kills the script.
+  # That exact bug crashed analysis on packages with >4000 files (VSCodium).
+  # The || true makes the scan fail-soft: a scan hiccup must never abort
+  # the whole conversion.
   NPROC="$(nproc 2>/dev/null || echo 2)"
-  find "$STAGE" -type f 2>/dev/null | head -n 4000 | \
+  find "$STAGE" -type f 2>/dev/null | awk 'NR<=4000' | \
     xargs -d '\n' -P "$NPROC" -n 24 bash -c '
       for f in "$@"; do
         [ "$(head -c4 "$f" 2>/dev/null | tr -d "\0")" = $'"'"'\x7fELF'"'"' ] || continue
         readelf -d "$f" 2>/dev/null | awk "/NEEDED/ {gsub(/[\[\]]/,\"\",\$NF); print \$NF}"
-      done' _ 2>/dev/null | sort -u | head -n 300 > "$NEEDED"
+      done' _ 2>/dev/null | sort -u | awk 'NR<=300' > "$NEEDED" || true
   BUNDLED="$WORKDIR/bundled"
   find "$STAGE" -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%f\n' 2>/dev/null | sort -u > "$BUNDLED" || : > "$BUNDLED"
   MISS=0
