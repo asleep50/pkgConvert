@@ -60,8 +60,8 @@ sudo dnf install binutils zstd rpm-build dpkg squashfs-tools cpio
 
 **Step 4:** Run the tool:
 
-- GUI: `./pkgconvert-gui.sh`
-- CLI: `./pkgconvert.sh someapp.deb --to rpm`
+- GUI: ```./pkgconvert-gui.sh```
+- CLI: ```./pkgconvert.sh someapp.deb --to rpm```
 
 **Step 5:** Install the resulting package (e.g. on Fedora):
 
